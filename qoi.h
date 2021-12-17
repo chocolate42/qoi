@@ -518,6 +518,9 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 				}
 				index2[index2_pos] = px;
 			}
+			/* index2[index2_pos] = px; should go here to update every time but we can
+			get away with putting it above, because if pixel is in index it's in index2
+			Only works because both indexes are powers of two */
 		}
 		px_prev = px;
 	}
