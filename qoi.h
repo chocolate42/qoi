@@ -343,7 +343,8 @@ Implementation */
 #define QOI_MASK_2    0xc0 /* 11000000 */
 #define QOI_MASK_3    0xe0 /* 11100000 */
 
-#define QOI_COLOR_HASH(C) (C.rgba.r*3 + C.rgba.g*5 + C.rgba.b*7 + C.rgba.a*11)
+#define QOI_COLOR_HASH_SIZE 1024
+#define QOI_COLOR_HASH(C) ((C.rgba.r*3 + C.rgba.g*5 + C.rgba.b*7 + C.rgba.a*11) & (QOI_COLOR_HASH_SIZE - 1))
 #define QOI_MAGIC \
 	(((unsigned int)'q') << 24 | ((unsigned int)'o') << 16 | \
 	 ((unsigned int)'i') <<  8 | ((unsigned int)'f'))
@@ -385,6 +386,9 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 	qoi_rgba_t index[32];
 	qoi_rgba_t index2[256];
 	qoi_rgba_t px, px_prev;
+	unsigned int hash_pos[QOI_COLOR_HASH_SIZE];
+	unsigned int hash2_pos[QOI_COLOR_HASH_SIZE];
+	unsigned int h, index_wpos, index2_wpos;
 
 	if (
 		data == NULL || out_len == NULL || desc == NULL ||
@@ -412,12 +416,15 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 	bytes[p++] = desc->channels;
 	bytes[p++] = desc->colorspace;
 
-
 	pixels = (const unsigned char *)data;
 
+	QOI_ZEROARR(hash_pos);
+	QOI_ZEROARR(hash2_pos);
 	QOI_ZEROARR(index);
 	QOI_ZEROARR(index2);
 
+	index_wpos = 0;
+	index2_wpos = 0;
 	run = 0;
 	px_prev.rgba.r = 0;
 	px_prev.rgba.g = 0;
@@ -447,21 +454,19 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 			}
 		}
 		else {
-			int hash, index_pos, index2_pos;
-
 			if (run > 0) {
 				bytes[p++] = QOI_OP_RUN | (run - 1);
 				run = 0;
 			}
-			hash = QOI_COLOR_HASH(px);
-			index_pos = hash & 0x1f;
 
-			if (index[index_pos].v == px.v) {
-				bytes[p++] = QOI_OP_INDEX | index_pos;
+			h = QOI_COLOR_HASH(px);
+
+			if (index[hash_pos[h] & 0x1f].v == px.v) {
+				bytes[p++] = QOI_OP_INDEX | (hash_pos[h] & 0x1f);
 			}
 			else {
-				index[index_pos] = px;
-				index2_pos = hash & 0xff;
+				hash_pos[h] = index_wpos;
+				index[index_wpos++ & 0x1f] = px;
 
 				if (px.rgba.a == px_prev.rgba.a) {
 					signed char vr = px.rgba.r - px_prev.rgba.r;
@@ -478,49 +483,53 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 					) {
 						bytes[p++] = QOI_OP_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2);
 					}
-					else if (index2[index2_pos].v == px.v) {
+					else if (index2[hash2_pos[h] & 0xff].v == px.v) {
 						bytes[p++] = QOI_OP_INDEX2;
-						bytes[p++] = index2_pos;
+						bytes[p++] = hash2_pos[h] & 0xff;
 					}
 					else if (
 						vg_r >  -9 && vg_r <  8 && 
 						vg   > -33 && vg   < 32 && 
 						vg_b >  -9 && vg_b <  8
 					) {
+						hash2_pos[h] = index2_wpos;
+						index2[index2_wpos++ & 0xff] = px;
 						bytes[p++] = QOI_OP_LUMA    | (vg   + 32);
 						bytes[p++] = (vg_r + 8) << 4 | (vg_b +  8);
 					}
 					else if (
 							vr >  -65 && vr <  64 &&
 							vb >  -65 && vb <  64
-						) {
-							bytes[p++] = QOI_OP_RGB3               | (vr + 64) >> 1;
-							bytes[p++] = px.rgba.g;
-							bytes[p++] = (((vr + 64) & 0x01) << 7) | (vb + 64);
-						}
+					) {
+						hash2_pos[h] = index2_wpos;
+						index2[index2_wpos++ & 0xff] = px;
+						bytes[p++] = QOI_OP_RGB3               | (vr + 64) >> 1;
+						bytes[p++] = px.rgba.g;
+						bytes[p++] = (((vr + 64) & 0x01) << 7) | (vb + 64);
+					}
 					else {
+						hash2_pos[h] = index2_wpos;
+						index2[index2_wpos++ & 0xff] = px;
 						bytes[p++] = QOI_OP_RGB;
 						bytes[p++] = px.rgba.r;
 						bytes[p++] = px.rgba.g;
 						bytes[p++] = px.rgba.b;
 					}
 				}
-				else if (index2[index2_pos].v == px.v) {
+				else if (index2[hash2_pos[h] & 0xff].v == px.v) {
 					bytes[p++] = QOI_OP_INDEX2;
-					bytes[p++] = index2_pos;
+					bytes[p++] = hash2_pos[h] & 0xff;
 				}
 				else {
+					hash2_pos[h] = index2_wpos;
+					index2[index2_wpos++ & 0xff] = px;
 					bytes[p++] = QOI_OP_RGBA;
 					bytes[p++] = px.rgba.r;
 					bytes[p++] = px.rgba.g;
 					bytes[p++] = px.rgba.b;
 					bytes[p++] = px.rgba.a;
 				}
-				index2[index2_pos] = px;
 			}
-			/* index2[index2_pos] = px; should go here to update every time but we can
-			get away with putting it above, because if pixel is in index it's in index2
-			Only works because both indexes are powers of two */
 		}
 		px_prev = px;
 	}
@@ -535,7 +544,7 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 
 void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 	const unsigned char *bytes;
-	unsigned int header_magic;
+	unsigned int header_magic, index_wpos = 0, index2_wpos = 0;
 	unsigned char *pixels;
 	qoi_rgba_t index[32];
 	qoi_rgba_t index2[256];
@@ -598,12 +607,16 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 				px.rgba.r = bytes[p++];
 				px.rgba.g = bytes[p++];
 				px.rgba.b = bytes[p++];
+				index[index_wpos++   & 0x1f] = px;
+				index2[index2_wpos++ & 0xff] = px;
 			}
 			else if (b1 == QOI_OP_RGBA) {
 				px.rgba.r = bytes[p++];
 				px.rgba.g = bytes[p++];
 				px.rgba.b = bytes[p++];
 				px.rgba.a = bytes[p++];
+				index[index_wpos++   & 0x1f] = px;
+				index2[index2_wpos++ & 0xff] = px;
 			}
 			else if ((b1 & QOI_MASK_3) == QOI_OP_INDEX) {
 				px = index[b1 ^ QOI_OP_INDEX];
@@ -612,6 +625,7 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 				px.rgba.r += ((b1 >> 4) & 0x03) - 2;
 				px.rgba.g += ((b1 >> 2) & 0x03) - 2;
 				px.rgba.b += ( b1       & 0x03) - 2;
+				index[index_wpos++   & 0x1f] = px;
 			}
 			else if ((b1 & QOI_MASK_2) == QOI_OP_LUMA) {
 				int b2 = bytes[p++];
@@ -619,9 +633,12 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 				px.rgba.r += vg - 8 + ((b2 >> 4) & 0x0f);
 				px.rgba.g += vg;
 				px.rgba.b += vg - 8 +  (b2       & 0x0f);
+				index[index_wpos++   & 0x1f] = px;
+				index2[index2_wpos++ & 0xff] = px;
 			}
 			else if (b1 == QOI_OP_INDEX2) {
 				px = index2[bytes[p++]];
+				index[index_wpos++   & 0x1f] = px;
 			}
 			else if ((b1 & QOI_MASK_3) == QOI_OP_RUN) {
 				run = (b1 & 0x1f);
@@ -632,10 +649,9 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 				px.rgba.r += (((b1 & 0x3f) << 1) | (b3 >> 7)) - 64;
 				px.rgba.g  = b2;
 				px.rgba.b += (b3 & 0x7f) - 64;
+				index[index_wpos++   & 0x1f] = px;
+				index2[index2_wpos++ & 0xff] = px;
 			}
-
-			index[QOI_COLOR_HASH(px)  & 0x1f] = px;
-			index2[QOI_COLOR_HASH(px) & 0xff] = px;
 		}
 
 		if (channels == 4) { 
