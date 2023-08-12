@@ -358,7 +358,6 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 	int px_len, px_end, px_pos, channels;
 	unsigned char *bytes;
 	const unsigned char *pixels;
-	qoi_rgba_t index[64];
 	qoi_rgba_t px, px_prev;
 
 	if (
@@ -387,10 +386,7 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 	bytes[p++] = desc->channels;
 	bytes[p++] = desc->colorspace;
 
-
 	pixels = (const unsigned char *)data;
-
-	QOI_ZEROARR(index);
 
 	run = 0;
 	px_prev.rgba.r = 0;
@@ -420,58 +416,47 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 			}
 		}
 		else {
-			int index_pos;
-
 			if (run > 0) {
 				bytes[p++] = QOI_OP_RUN | (run - 1);
 				run = 0;
 			}
 
-			index_pos = QOI_COLOR_HASH(px) % 64;
+			if (px.rgba.a == px_prev.rgba.a) {
+				signed char vr = px.rgba.r - px_prev.rgba.r;
+				signed char vg = px.rgba.g - px_prev.rgba.g;
+				signed char vb = px.rgba.b - px_prev.rgba.b;
 
-			if (index[index_pos].v == px.v) {
-				bytes[p++] = QOI_OP_INDEX | index_pos;
-			}
-			else {
-				index[index_pos] = px;
+				signed char vg_r = vr - vg;
+				signed char vg_b = vb - vg;
 
-				if (px.rgba.a == px_prev.rgba.a) {
-					signed char vr = px.rgba.r - px_prev.rgba.r;
-					signed char vg = px.rgba.g - px_prev.rgba.g;
-					signed char vb = px.rgba.b - px_prev.rgba.b;
-
-					signed char vg_r = vr - vg;
-					signed char vg_b = vb - vg;
-
-					if (
-						vr > -3 && vr < 2 &&
-						vg > -3 && vg < 2 &&
-						vb > -3 && vb < 2
-					) {
-						bytes[p++] = QOI_OP_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2);
-					}
-					else if (
-						vg_r >  -9 && vg_r <  8 &&
-						vg   > -33 && vg   < 32 &&
-						vg_b >  -9 && vg_b <  8
-					) {
-						bytes[p++] = QOI_OP_LUMA     | (vg   + 32);
-						bytes[p++] = (vg_r + 8) << 4 | (vg_b +  8);
-					}
-					else {
-						bytes[p++] = QOI_OP_RGB;
-						bytes[p++] = px.rgba.r;
-						bytes[p++] = px.rgba.g;
-						bytes[p++] = px.rgba.b;
-					}
+				if (
+					vr > -3 && vr < 2 &&
+					vg > -3 && vg < 2 &&
+					vb > -3 && vb < 2
+				) {
+					bytes[p++] = QOI_OP_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2);
+				}
+				else if (
+					vg_r >  -9 && vg_r <  8 &&
+					vg   > -33 && vg   < 32 &&
+					vg_b >  -9 && vg_b <  8
+				) {
+					bytes[p++] = QOI_OP_LUMA     | (vg   + 32);
+					bytes[p++] = (vg_r + 8) << 4 | (vg_b +  8);
 				}
 				else {
-					bytes[p++] = QOI_OP_RGBA;
+					bytes[p++] = QOI_OP_RGB;
 					bytes[p++] = px.rgba.r;
 					bytes[p++] = px.rgba.g;
 					bytes[p++] = px.rgba.b;
-					bytes[p++] = px.rgba.a;
 				}
+			}
+			else {
+				bytes[p++] = QOI_OP_RGBA;
+				bytes[p++] = px.rgba.r;
+				bytes[p++] = px.rgba.g;
+				bytes[p++] = px.rgba.b;
+				bytes[p++] = px.rgba.a;
 			}
 		}
 		px_prev = px;
