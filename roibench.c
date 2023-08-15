@@ -25,7 +25,7 @@ Compile with:
 #include "stb_image_write.h"
 
 #define QOI_IMPLEMENTATION
-#include "qoi.h"
+#include "roi.h"
 
 
 

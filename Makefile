@@ -3,8 +3,8 @@ CFLAGS_BENCH ?= -std=gnu99 -O3
 LFLAGS_BENCH ?= -lpng
 CFLAGS_CONV ?= -std=c99 -O3
 
-TARGET_BENCH ?= qoibench
-TARGET_CONV ?= qoiconv
+TARGET_BENCH ?= roibench
+TARGET_CONV ?= roiconv
 
 all: $(TARGET_BENCH) $(TARGET_CONV)
 
