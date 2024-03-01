@@ -55,6 +55,81 @@ int main(int argc, char **argv) {
 
 		pixels = (void *)stbi_load(argv[1], &w, &h, NULL, channels);
 	}
+	else if (STR_ENDS_WITH(argv[1], ".ppm")) {
+		//https://netpbm.sourceforge.net/doc/ppm.html#format
+		int maxval;
+		unsigned char r;
+		FILE *fp=fopen(argv[1], "rb");
+		if(1!=fread(&r, 1, 1, fp))
+			goto ERR;
+		if(r!='P')
+			goto ERR;
+		if(1!=fread(&r, 1, 1, fp))
+			goto ERR;
+		if(r!='6')
+			goto ERR;
+		while(1){//whitespace
+			if(1!=fread(&r, 1, 1, fp))
+				goto ERR;
+			if(r>='0' && r<='9')
+				break;
+		}
+		w=0;
+		while(1){
+			if(r>='0' && r<='9')
+				w=(w*10)+(r-'0');
+			else
+				break;
+			if(1!=fread(&r, 1, 1, fp))
+				goto ERR;
+		}
+		while(1){//whitespace
+			if(1!=fread(&r, 1, 1, fp))
+				goto ERR;
+			if(r>='0' && r<='9')
+				break;
+		}
+		h=0;
+		while(1){
+			if(r>='0' && r<='9')
+				h=(h*10)+(r-'0');
+			else
+				break;
+			if(1!=fread(&r, 1, 1, fp))
+				goto ERR;
+		}
+		while(1){//whitespace
+			if(1!=fread(&r, 1, 1, fp))
+				goto ERR;
+			if(r>='0' && r<='9')
+				break;
+		}
+		maxval=0;
+		while(1){
+			if(r>='0' && r<='9')
+				maxval=(maxval*10)+(r-'0');
+			else
+				break;
+			if(1!=fread(&r, 1, 1, fp))
+				goto ERR;
+		}
+		if(maxval>255)
+			goto ERR;
+		if(w<=0)
+			goto ERR;
+		if(h<=0)
+			goto ERR;
+		pixels=malloc(w*h*3);
+		channels=3;
+		if((w*h*3)!=fread(pixels, 1, w*h*3, fp))
+			goto ERR;
+		fclose(fp);
+		printf("Read ppm file w h maxval %d %d %d\n", w, h, maxval);
+		goto NOERR;
+		ERR:
+		printf("Invalid or unsupported ppm file\n");
+		exit(1);
+	}
 	else if (STR_ENDS_WITH(argv[1], ".roi")) {
 		qoi_desc desc;
 		pixels = qoi_read(argv[1], &desc, 0);
@@ -62,6 +137,7 @@ int main(int argc, char **argv) {
 		w = desc.width;
 		h = desc.height;
 	}
+	NOERR:
 
 	if (pixels == NULL) {
 		printf("Couldn't load/decode %s\n", argv[1]);
