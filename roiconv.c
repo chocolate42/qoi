@@ -124,7 +124,6 @@ int main(int argc, char **argv) {
 		if((w*h*3)!=fread(pixels, 1, w*h*3, fp))
 			goto ERR;
 		fclose(fp);
-		printf("Read ppm file w h maxval %d %d %d\n", w, h, maxval);
 		goto NOERR;
 		ERR:
 		printf("Invalid or unsupported ppm file\n");
