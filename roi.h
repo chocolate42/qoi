@@ -508,25 +508,27 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 			signed char vg_r = vr - vg;
 			signed char vg_b = vb - vg;
 
+			unsigned char ar = (vg_r<0)?(-vg_r)-1:vg_r;
+			unsigned char ag = (vg<0)?(-vg)-1:vg;
+			unsigned char ab = (vg_b<0)?(-vg_b)-1:vg_b;
+			unsigned char arb = ar|ab;
+
 			if (
-				vg_r > -3 && vg_r < 2 &&
-				vg > -5 && vg < 4 &&
-				vg_b > -3 && vg_b < 2
+				arb < 2 &&
+				ag  < 4
 			) {
 				bytes[p++] = QOI_OP_LUMA232 | (vg_r + 2) << 5 | (vg_b + 2) << 3 | (vg + 4);
 			}
 			else if (
-				vg_r >  -9 && vg_r <  8 &&
-				vg   > -33 && vg   < 32 &&
-				vg_b >  -9 && vg_b <  8
+				arb <  8 &&
+				ag  < 32
 			) {
 				bytes[p++] = QOI_OP_LUMA464     | (vg   + 32);
 				bytes[p++] = (vg_r + 8) << 4 | (vg_b +  8);
 			}
 			else if (
-				vg_r >  -65 && vg_r < 64 &&
-				vg   > -65  && vg   < 64 &&
-				vg_b >  -65 && vg_b < 64
+				arb < 64 &&
+				ag  < 64
 			) {
 				bytes[p++] = QOI_OP_LUMA777     | ((vg_b + 64)>>2);
 				bytes[p++] = (((vg_b+64)&3)<<6) | ((vg_r + 64)>>1);
