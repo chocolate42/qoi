@@ -481,60 +481,67 @@ void *qoi_encode(const void *data, const qoi_desc *desc, int *out_len) {
 			px.rgba.g = pixels[px_pos + 1];
 			px.rgba.b = pixels[px_pos + 2];
 
-			if (px.v == px_prev.v) {
-				run++;
-				if (run == 30 || px_pos == px_end) {
+			while(px.v == px_prev.v) {
+				++run;
+				if (run == 30) {
 					bytes[p++] = QOI_OP_RUN | (run - 1);
 					run = 0;
 				}
+				else if(px_pos == px_end) {
+					bytes[p++] = QOI_OP_RUN | (run - 1);
+					goto DONE;
+				}
+				px_pos+=3;
+				px.rgba.r = pixels[px_pos + 0];
+				px.rgba.g = pixels[px_pos + 1];
+				px.rgba.b = pixels[px_pos + 2];
+			}
+			if (run) {
+				bytes[p++] = QOI_OP_RUN | (run - 1);
+				run = 0;
+			}
+
+			signed char vr = px.rgba.r - px_prev.rgba.r;
+			signed char vg = px.rgba.g - px_prev.rgba.g;
+			signed char vb = px.rgba.b - px_prev.rgba.b;
+
+			signed char vg_r = vr - vg;
+			signed char vg_b = vb - vg;
+
+			if (
+				vg_r > -3 && vg_r < 2 &&
+				vg > -5 && vg < 4 &&
+				vg_b > -3 && vg_b < 2
+			) {
+				bytes[p++] = QOI_OP_LUMA232 | (vg_r + 2) << 5 | (vg_b + 2) << 3 | (vg + 4);
+			}
+			else if (
+				vg_r >  -9 && vg_r <  8 &&
+				vg   > -33 && vg   < 32 &&
+				vg_b >  -9 && vg_b <  8
+			) {
+				bytes[p++] = QOI_OP_LUMA464     | (vg   + 32);
+				bytes[p++] = (vg_r + 8) << 4 | (vg_b +  8);
+			}
+			else if (
+				vg_r >  -65 && vg_r < 64 &&
+				vg   > -65  && vg   < 64 &&
+				vg_b >  -65 && vg_b < 64
+			) {
+				bytes[p++] = QOI_OP_LUMA777     | ((vg_b + 64)>>2);
+				bytes[p++] = (((vg_b+64)&3)<<6) | ((vg_r + 64)>>1);
+				bytes[p++] = (((vg_r+64)&1)<<7) | vg+64;
 			}
 			else {
-				if (run > 0) {
-					bytes[p++] = QOI_OP_RUN | (run - 1);
-					run = 0;
-				}
-
-				signed char vr = px.rgba.r - px_prev.rgba.r;
-				signed char vg = px.rgba.g - px_prev.rgba.g;
-				signed char vb = px.rgba.b - px_prev.rgba.b;
-
-				signed char vg_r = vr - vg;
-				signed char vg_b = vb - vg;
-
-				if (
-					vg_r > -3 && vg_r < 2 &&
-					vg > -5 && vg < 4 &&
-					vg_b > -3 && vg_b < 2
-				) {
-					bytes[p++] = QOI_OP_LUMA232 | (vg_r + 2) << 5 | (vg_b + 2) << 3 | (vg + 4);
-				}
-				else if (
-					vg_r >  -9 && vg_r <  8 &&
-					vg   > -33 && vg   < 32 &&
-					vg_b >  -9 && vg_b <  8
-				) {
-					bytes[p++] = QOI_OP_LUMA464     | (vg   + 32);
-					bytes[p++] = (vg_r + 8) << 4 | (vg_b +  8);
-				}
-				else if (
-					vg_r >  -65 && vg_r < 64 &&
-					vg   > -65  && vg   < 64 &&
-					vg_b >  -65 && vg_b < 64
-				) {
-					bytes[p++] = QOI_OP_LUMA777     | ((vg_b + 64)>>2);
-					bytes[p++] = (((vg_b+64)&3)<<6) | ((vg_r + 64)>>1);
-					bytes[p++] = (((vg_r+64)&1)<<7) | vg+64;
-				}
-				else {
-					bytes[p++] = QOI_OP_RGB;
-					bytes[p++] = px.rgba.r;
-					bytes[p++] = px.rgba.g;
-					bytes[p++] = px.rgba.b;
-				}
+				bytes[p++] = QOI_OP_RGB;
+				bytes[p++] = px.rgba.r;
+				bytes[p++] = px.rgba.g;
+				bytes[p++] = px.rgba.b;
 			}
 			px_prev = px;
 		}
 	}
+	DONE:
 
 	for (i = 0; i < (int)sizeof(qoi_padding); i++) {
 		bytes[p++] = qoi_padding[i];
